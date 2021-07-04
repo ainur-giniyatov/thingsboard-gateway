@@ -1,9 +1,15 @@
 import random
 import time
 from threading import Thread
+from typing import Optional
+
+from pymodbus.client.sync import ModbusTcpClient
+from pymodbus.exceptions import ConnectionException, ModbusIOException
+from pymodbus.register_read_message import ReadInputRegistersResponse
 
 from thingsboard_gateway import TBGatewayService
 from thingsboard_gateway.connectors.connector import Connector, log
+from thingsboard_gateway.tb_utility.tb_loader import TBModuleLoader
 
 
 class MyOwnModbusConnector(Thread, Connector):
@@ -21,40 +27,66 @@ class MyOwnModbusConnector(Thread, Connector):
         self.daemon = True
         self.__is_active = False
 
+        self.__poll_interval = self.__config.get('poll_interval', 1)
+        self.__unit = self.__config.get('unit', 1)
+        converter_class_name = self.__config.get('converter_class_name')
+        assert converter_class_name is not None
+        converter_class = TBModuleLoader.import_module(connector_type, converter_class_name)
+        self.__converter_instance = converter_class()
+
+        ip_addr = self.__config.get('ip_addr', '127.0.0.1')
+        port = self.__config.get('port', 5440)
+        self.__modbus_client = ModbusTcpClient(ip_addr, port=port)
+
     def open(self):
         self.__is_active = True
+        self.__modbus_client.connect()
         self.start()
+
+    def __reconnect(self):
+        log.info('trying to reestablish connection')
+        self.__modbus_client.connect()
 
     def close(self):
         self.__is_active = False
+        self.__modbus_client.close()
 
     def get_name(self):
         return self.name
 
     def is_connected(self):
-        return True
+        return self.__is_active
 
     def on_attributes_update(self, content):
-        pass
+        print('on_attributes_update')
 
     def server_side_rpc_handler(self, content):
-        pass
+        print('server_side_rpc_handler')
 
     def run(self):
-        while self.__is_active:
-            time.sleep(1)
-            print('polling data')
-            data = {
-                "deviceName": "device 1",
-                "deviceType": "unknown",
-                "attributes": [
-                                {"attr1": "good"},
-                                {"attr2": False}
-                              ],
-                "telemetry": [
-                                {"val1": random.random() * 10.0},
-                                {"val2": random.randint(-40, 130)},
-                              ]
-            }
-            self.__gateway.send_to_storage(self.get_name(), data)
+        try:
+            while self.__is_active:
+                registers_response: Optional[ReadInputRegistersResponse] = None
+                try:
+                    rr: Optional[ReadInputRegistersResponse, ModbusIOException] = self.__modbus_client.read_input_registers(0, 2, unit=self.__unit)
+                    if not isinstance(rr, ModbusIOException):
+                        registers_response = rr
+                except ModbusIOException as e:
+                    self.__reconnect()
+                    log.exception(e)
+                except ConnectionException as e:
+                    self.__reconnect()
+                    log.exception(e)
+                except Exception as e:
+                    log.exception(e)
+                    # raise e
+                if registers_response is not None:
+                    try:
+                        converted_data = self.__converter_instance.convert(self.__config, registers_response)
+                        self.__gateway.send_to_storage(self.get_name(), converted_data)
+                    except Exception as e:
+                        log.exception(e)
+                time.sleep(self.__poll_interval)
+        except Exception as e:
+            log.exception(e)
 
