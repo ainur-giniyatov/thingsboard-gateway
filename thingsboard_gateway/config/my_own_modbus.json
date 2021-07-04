@@ -1,0 +1,8 @@
+{
+	"name": "My Own Modbus",
+	"ip_address": "127.0.0.1",
+	"port": 5440,
+	"poll_interval": 2,
+	"unit": 1,
+	"converter_class_name": "MyOwnUpConverter"
+}
