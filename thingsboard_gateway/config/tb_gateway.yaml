@@ -1,12 +1,12 @@
 thingsboard:
-  host: thingsboard.cloud
+  host: 172.18.0.3
   port: 1883
   remoteShell: false
   remoteConfiguration: false
   statsSendPeriodInSeconds: 3600
   checkConnectorsConfigurationInSeconds: 60
   security:
-    accessToken: PUT_YOUR_GW_ACCESS_TOKEN_HERE
+    accessToken: vWVMIVKiV7JdhnEYsuQ1
   qos: 1
 storage:
   type: memory
@@ -18,11 +18,16 @@ storage:
 #  max_read_records_count: 10
 #  max_records_per_file: 10000
 connectors:
-  -
-    name: MQTT Broker Connector
-    type: mqtt
-    configuration: mqtt.json
+#  -
+#    name: MQTT Broker Connector
+#    type: mqtt
+#    configuration: mqtt.json
 
+  -
+    name: My Own Connector
+    type: my_own_modbus
+    configuration: my_own_modbus.json
+    class: MyOwnModbusConnector
 #  -
 #    name: Modbus Connector
 #    type: modbus
